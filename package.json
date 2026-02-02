@@ -1,0 +1,17 @@
+{
+  "name": "hexo-live-mouse",
+  "version": "1.0.0",
+  "description": "一个可以让你博客显示访问者实时鼠标位置的插件",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "plguin",
+    "mouse",
+    "hexo"
+  ],
+  "author": "IceCliffs",
+  "license": "Apache Licence 2.0",
+  "type": "commonjs"
+}
