@@ -7,6 +7,7 @@ const IDLE_TIMEOUT = 60000;
 const connectionCount = new Map();
 const lastMoveCache = new Map();
 const lastActive = new Map();
+const currentPositions = new Map();
 const io = require("socket.io")(PORT, {
     cors: {
         origin: ["http://localhost", "https://iloli.moe"],
@@ -36,6 +37,13 @@ io.use((socket, next) => {
 io.on("connection", (socket) => {
     console.log("握握手", socket.id);
     lastActive.set(socket.id, Date.now());
+    socket.emit("initial_state",
+        Array.from(currentPositions.entries()).map(([id, pos]) => ({
+            id,
+            x: pos.x,
+            y: pos.y
+        }))
+    );
     socket.on("mouse_move", (data) => {
         try {
             const now = Date.now();
@@ -48,11 +56,16 @@ io.on("connection", (socket) => {
             if (data.y < 0 || data.y > 1) return;
             lastMoveCache.set(socket.id, now);
             lastActive.set(socket.id, now);
+            currentPositions.set(socket.id, {
+                x: data.x,
+                y: data.y
+            });
             socket.broadcast.volatile.emit("update_mouse", {
                 id: socket.id,
                 x: data.x,
                 y: data.y
             });
+
         } catch {}
     });
     socket.on("disconnect", () => {
@@ -60,13 +73,16 @@ io.on("connection", (socket) => {
             console.log("握握双手", socket.id);
             lastMoveCache.delete(socket.id);
             lastActive.delete(socket.id);
+            currentPositions.delete(socket.id);
             const ip = socket._ip;
             if (ip && connectionCount.has(ip)) {
                 const c = connectionCount.get(ip) - 1;
                 if (c <= 0) connectionCount.delete(ip);
                 else connectionCount.set(ip, c);
             }
+
             io.emit("user_left", socket.id);
+
         } catch {}
     });
 });

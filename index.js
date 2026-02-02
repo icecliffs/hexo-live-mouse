@@ -3,27 +3,25 @@ const scriptContent = `
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
 (function() {
-const socket = io('http://127.0.0.1:3000', {
+const socket = io('https://127.0.0.1', {
     transports: ['websocket'],
     reconnectionAttempts: 5,
     timeout: 5000
 });
 const otherMice = new Map();
 const MAX_USERS = 100;
-document.addEventListener('mousemove', function(e) {
-    socket.emit('mouse_move', {
-        x: e.clientX / window.innerWidth,
-        y: e.clientY / window.innerHeight
-    });
-});
-socket.on('update_mouse', function(data) {
+
+function renderMouse(data) {
     if (!data) return;
     if (typeof data.x !== 'number' || typeof data.y !== 'number') return;
     if (data.x < 0 || data.x > 1 || data.y < 0 || data.y > 1) return;
     if (typeof data.id !== 'string' && typeof data.id !== 'number') return;
+
     const safeId = String(data.id).slice(0, 64);
     if (!otherMice.has(safeId) && otherMice.size > MAX_USERS) return;
+
     let el = otherMice.get(safeId);
+
     if (!el) {
         el = document.createElement('div');
         el.style.cssText = \`
@@ -42,12 +40,28 @@ socket.on('update_mouse', function(data) {
         document.body.appendChild(el);
         otherMice.set(safeId, el);
     }
+
     const x = data.x * window.innerWidth;
     const y = data.y * window.innerHeight;
     el.style.transform = \`translate3d(\${x}px, \${y}px, 0)\`;
     el.style.left = '0';
     el.style.top = '0';
+}
+
+document.addEventListener('mousemove', function(e) {
+    socket.emit('mouse_move', {
+        x: e.clientX / window.innerWidth,
+        y: e.clientY / window.innerHeight
+    });
 });
+
+socket.on('initial_state', function(list) {
+    if (!Array.isArray(list)) return;
+    list.forEach(renderMouse);
+});
+
+socket.on('update_mouse', renderMouse);
+
 socket.on('user_left', function(id) {
     const safeId = String(id || '').slice(0, 64);
     if (otherMice.has(safeId)) {
