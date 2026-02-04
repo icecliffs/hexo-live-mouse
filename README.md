@@ -5,3 +5,13 @@
 ## 效果图
 
 ![](https://bfs.iloli.moe/blog/20260202150916974.png)
+
+## 使用
+
+服务端启动 server.js
+
+```bash
+node server.js
+```
+
+hexo 加载 index.js 即可
