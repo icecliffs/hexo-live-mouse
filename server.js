@@ -1,4 +1,5 @@
 "use strict";
+
 const PORT = process.env.PORT || 3000;
 const MAX_CONNECTIONS = 2000;
 const MAX_PER_IP = 50;
@@ -17,9 +18,16 @@ const io = require("socket.io")(PORT, {
     pingTimeout: 20000,
     pingInterval: 25000
 });
+function getClientIp(socket) {
+    const xff = socket.handshake.headers['x-forwarded-for'];
+    if (xff) {
+        return xff.split(',')[0].trim();
+    }
+    return socket.handshake.address || "unknown";
+}
 io.use((socket, next) => {
     try {
-        const ip = socket.handshake.address || "unknown";
+        const ip = getClientIp(socket) || socket.handshake.address || "unknown";
         if (io.engine.clientsCount > MAX_CONNECTIONS) {
             return next(new Error("server full"));
         }
@@ -30,7 +38,7 @@ io.use((socket, next) => {
         connectionCount.set(ip, count + 1);
         socket._ip = ip;
         next();
-    } catch {
+    } catch (err) {
         next(new Error("auth fail"));
     }
 });
@@ -41,7 +49,8 @@ io.on("connection", (socket) => {
         Array.from(currentPositions.entries()).map(([id, pos]) => ({
             id,
             x: pos.x,
-            y: pos.y
+            y: pos.y,
+            ip: pos.ip || "unknown"
         }))
     );
     socket.on("mouse_move", (data) => {
@@ -49,24 +58,22 @@ io.on("connection", (socket) => {
             const now = Date.now();
             const lastMove = lastMoveCache.get(socket.id) || 0;
             if (now - lastMove < MOVE_INTERVAL) return;
-            if (!data) return;
-            if (typeof data.x !== "number") return;
-            if (typeof data.y !== "number") return;
-            if (data.x < 0 || data.x > 1) return;
-            if (data.y < 0 || data.y > 1) return;
+            if (!data || typeof data.x !== "number" || typeof data.y !== "number") return;
+            if (data.x < 0 || data.x > 1 || data.y < 0 || data.y > 1) return;
             lastMoveCache.set(socket.id, now);
             lastActive.set(socket.id, now);
             currentPositions.set(socket.id, {
                 x: data.x,
-                y: data.y
+                y: data.y,
+                ip: socket._ip
             });
             socket.broadcast.volatile.emit("update_mouse", {
                 id: socket.id,
                 x: data.x,
-                y: data.y
+                y: data.y,
+                ip: socket._ip
             });
-
-        } catch {}
+        } catch (e) {}
     });
     socket.on("disconnect", () => {
         try {
@@ -80,10 +87,8 @@ io.on("connection", (socket) => {
                 if (c <= 0) connectionCount.delete(ip);
                 else connectionCount.set(ip, c);
             }
-
             io.emit("user_left", socket.id);
-
-        } catch {}
+        } catch (e) {}
     });
 });
 setInterval(() => {
@@ -95,4 +100,4 @@ setInterval(() => {
         }
     }
 }, 30000);
-console.log("hexo-live-mouse-secure:", PORT);
+console.log("hexo-live-mouse-secure server started on port:", PORT);
