@@ -3,15 +3,15 @@ const scriptContent = `
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
 (function() {
-    const socket = io('https://nmsl.io', {
+    const socket = io('https://nm.sl', {
         transports: ['websocket'],
         reconnectionAttempts: 5,
-        timeout: 5000
+        timeout: 60000
     });
     const otherMice = new Map();
     const MAX_USERS = 100;
-    const myFakeGps = (Math.random()*90-45).toFixed(4) + "," + (Math.random()*180-90).toFixed(4);
     let myIP = "loading...";
+    let myGps = "waiting for permission..."; 
     const ipLabel = document.createElement('div');
     ipLabel.style.cssText = \`
         position: fixed;
@@ -27,19 +27,33 @@ const scriptContent = `
         box-shadow: 0 2px 5px rgba(0,0,0,0.5);
     \`;
     document.body.appendChild(ipLabel);
-
     fetch('https://api.ipify.org?format=json')
         .then(r => r.json())
         .then(d => { if (d && d.ip) myIP = d.ip; })
         .catch(() => { myIP = "ip unknown"; });
-
+    if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                myGps = position.coords.latitude.toFixed(4) + "," + position.coords.longitude.toFixed(4);
+            },
+            (error) => {
+                myGps = "GPS denied";
+                console.warn("Geolocation error:", error.message);
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    } else {
+        myGps = "not supported";
+    }
     document.addEventListener('mousemove', function(e) {
         ipLabel.style.left = (e.clientX + 16) + 'px';
         ipLabel.style.top  = (e.clientY + 16) + 'px';
-        ipLabel.textContent = \`\${myIP} || GPS: \${myFakeGps}\`;
+        ipLabel.textContent = \`\${myIP} || GPS: \${myGps}\`;
         socket.emit('mouse_move', {
             x: e.clientX / window.innerWidth,
-            y: e.clientY / window.innerHeight
+            y: e.clientY / window.innerHeight,
+            gps: myGps,
+            ip: myIP
         });
     });
     function renderMouse(data) {
