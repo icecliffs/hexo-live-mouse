@@ -9,15 +9,17 @@ const connectionCount = new Map();
 const lastMoveCache = new Map();
 const lastActive = new Map();
 const currentPositions = new Map();
+
 const io = require("socket.io")(PORT, {
     cors: {
         origin: ["http://localhost", "https://iloli.moe"],
         methods: ["GET", "POST"]
     },
-    maxHttpBufferSize: 1024,
+    maxHttpBufferSize: 2048,
     pingTimeout: 20000,
     pingInterval: 25000
 });
+
 function getClientIp(socket) {
     const xff = socket.handshake.headers['x-forwarded-for'];
     if (xff) {
@@ -25,9 +27,10 @@ function getClientIp(socket) {
     }
     return socket.handshake.address || "unknown";
 }
+
 io.use((socket, next) => {
     try {
-        const ip = getClientIp(socket) || socket.handshake.address || "unknown";
+        const ip = getClientIp(socket);
         if (io.engine.clientsCount > MAX_CONNECTIONS) {
             return next(new Error("server full"));
         }
@@ -42,45 +45,67 @@ io.use((socket, next) => {
         next(new Error("auth fail"));
     }
 });
+
 io.on("connection", (socket) => {
-    console.log("握握手", socket.id);
+    const clientIp = socket._ip || "unknown";
+    console.log("握握手:", socket.id, "来自:", clientIp);
+
     lastActive.set(socket.id, Date.now());
+
+    currentPositions.set(socket.id, {
+        x: -1,
+        y: -1,
+        ip: clientIp,
+        gps: "定位中..." 
+    });
+
     socket.emit("initial_state",
         Array.from(currentPositions.entries()).map(([id, pos]) => ({
             id,
             x: pos.x,
             y: pos.y,
-            ip: pos.ip || "unknown"
+            ip: pos.ip,
+            gps: pos.gps
         }))
     );
+
     socket.on("mouse_move", (data) => {
         try {
             const now = Date.now();
             const lastMove = lastMoveCache.get(socket.id) || 0;
+            
             if (now - lastMove < MOVE_INTERVAL) return;
+            
             if (!data || typeof data.x !== "number" || typeof data.y !== "number") return;
             if (data.x < 0 || data.x > 1 || data.y < 0 || data.y > 1) return;
+
             lastMoveCache.set(socket.id, now);
             lastActive.set(socket.id, now);
-            currentPositions.set(socket.id, {
+
+            const positionData = {
                 x: data.x,
                 y: data.y,
-                ip: socket._ip
-            });
+                ip: clientIp,
+                gps: data.gps || "Unknown Location" 
+            };
+
+            currentPositions.set(socket.id, positionData);
+
             socket.broadcast.volatile.emit("update_mouse", {
                 id: socket.id,
-                x: data.x,
-                y: data.y,
-                ip: socket._ip
+                ...positionData
             });
-        } catch (e) {}
+        } catch (e) {
+        }
     });
+
     socket.on("disconnect", () => {
         try {
-            console.log("握握双手", socket.id);
+            console.log("握握双手:", socket.id);
             lastMoveCache.delete(socket.id);
             lastActive.delete(socket.id);
             currentPositions.delete(socket.id);
+
             const ip = socket._ip;
             if (ip && connectionCount.has(ip)) {
                 const c = connectionCount.get(ip) - 1;
@@ -91,13 +116,20 @@ io.on("connection", (socket) => {
         } catch (e) {}
     });
 });
+
 setInterval(() => {
     const now = Date.now();
     for (const [id, time] of lastActive.entries()) {
         if (now - time > IDLE_TIMEOUT) {
             const socket = io.sockets.sockets.get(id);
-            if (socket) socket.disconnect(true);
+            if (socket) {
+                console.log("忍者离开了:", id);
+                socket.disconnect(true);
+            }
         }
     }
 }, 30000);
-console.log("hexo-live-mouse-secure server started on port:", PORT);
+
+console.log("Hexo-Live-Mouse Server 运行中...");
+console.log("端口:", PORT);
+console.log("最大连接数:", MAX_CONNECTIONS);
